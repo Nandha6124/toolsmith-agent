@@ -67,7 +67,21 @@ def test_max_steps_guardrail(monkeypatch):
     monkeypatch.setattr(settings, "max_steps", 3)
     llm = scripted(*[call("calculator", {"expression": f"{i}+1"}) for i in range(10)])
     res = run_agent("loop forever", llm=llm)
-    assert res.stopped_reason == "max_steps" and len(res.steps) == 3 and res.llm_calls == 3
+    # the wrap-up call tried to call a tool again, so the fallback message is used
+    assert res.stopped_reason == "max_steps" and len(res.steps) == 3 and res.llm_calls == 4
+    assert res.answer.startswith("Stopped before finishing")
+
+
+def test_max_steps_wrapup_gives_best_answer(monkeypatch):
+    monkeypatch.setattr(settings, "max_steps", 2)
+    llm = scripted(
+        call("calculator", {"expression": "1+1"}),
+        call("calculator", {"expression": "2+2"}),
+        final("Best answer: 4"),
+    )
+    res = run_agent("task", llm=llm)
+    assert res.stopped_reason == "max_steps" and res.answer == "Best answer: 4"
+    assert llm.seen[-1][-1]["parts"][0]["text"].startswith("You are out of steps")
 
 
 def test_repeated_call_detected():

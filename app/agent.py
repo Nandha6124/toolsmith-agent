@@ -11,6 +11,7 @@ SYSTEM_PROMPT = """You are a careful assistant that solves tasks by using tools.
   Use web_search for general facts.
 - Think about what you still need, call one or more tools, read the results, and repeat.
 - If a tool returns an ERROR, fix your input and try again, or try another approach.
+- Do not repeat a search that already gave you the answer; one or two searches are usually enough.
 - When you have enough information, answer concisely and mention the numbers you used."""
 
 LLM = Callable[[List[Dict[str, Any]], List[Dict[str, Any]], str], LLMResponse]
@@ -88,7 +89,20 @@ def run_agent(task: str, llm: Optional[LLM] = None) -> AgentResult:
             response_parts.append({"functionResponse": {"name": name, "response": {"result": observation}}})
         contents.append({"role": "user", "parts": response_parts})
 
-    if result.stopped_reason in ("max_steps", "token_budget", "cost_budget"):
+    if result.stopped_reason == "max_steps":
+        # Out of steps: one last call WITHOUT tools so the model summarizes what it found.
+        contents.append({"role": "user", "parts": [{"text": "You are out of steps. Using only the information gathered so far, give your best final answer now. Say clearly if something is uncertain."}]})
+        try:
+            final = llm(contents, [], SYSTEM_PROMPT)
+            result.llm_calls += 1
+            result.input_tokens += final.input_tokens
+            result.output_tokens += final.output_tokens
+            if final.text and not final.function_calls:
+                result.answer = final.text
+        except LLMError:
+            pass
+
+    if not result.answer:
         result.answer = f"Stopped before finishing ({result.stopped_reason.replace('_', ' ')})."
         if result.steps:
             last = result.steps[-1]

@@ -1,5 +1,6 @@
 """The three tools the agent can call. Each takes keyword args and returns a string."""
 import ast
+import html
 import operator
 import os
 import re
@@ -51,28 +52,27 @@ def calculator(expression: str) -> str:
 
 # ---------- web search (Wikipedia) ----------
 def web_search(query: str) -> str:
-    """Search Wikipedia and return the top results with their summaries."""
+    """Search Wikipedia and return the intro paragraph of the top results."""
     try:
         r = httpx.get(
             "https://en.wikipedia.org/w/api.php",
             params={
-                "action": "query", "list": "search", "srsearch": query,
-                "srlimit": 3, "format": "json",
+                "action": "query", "generator": "search", "gsrsearch": query, "gsrlimit": 3,
+                "prop": "extracts", "exintro": 1, "explaintext": 1, "exchars": 700, "format": "json",
             },
-            headers={"User-Agent": "toolsmith-agent/1.0 (learning project)"},
+            headers={"User-Agent": "ToolsmithAgent/1.0 (https://github.com/Nandha6124/toolsmith-agent; learning project) httpx"},
             timeout=15,
         )
         r.raise_for_status()
-        hits = r.json()["query"]["search"]
-    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        pages = r.json().get("query", {}).get("pages", {})
+    except (httpx.HTTPError, ValueError) as exc:
         raise ToolError(f"Search failed: {exc}")
-    if not hits:
+    if not pages:
         return "No results found."
-    lines = []
-    for h in hits:
-        snippet = re.sub(r"<[^>]+>", "", h["snippet"])
-        lines.append(f"- {h['title']}: {snippet}")
-    return "\n".join(lines)
+    ranked = sorted(pages.values(), key=lambda p: p.get("index", 99))
+    return "\n\n".join(
+        f"- {p['title']}: {html.unescape(' '.join(p.get('extract', '').split()))}" for p in ranked
+    )
 
 
 # ---------- read-only database query ----------

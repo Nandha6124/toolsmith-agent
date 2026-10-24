@@ -55,9 +55,10 @@ def call_model(contents: List[Dict[str, Any]], tools: List[Dict[str, Any]], syst
     payload = {
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": contents,
-        "tools": [{"functionDeclarations": tools}],
         "generationConfig": {"temperature": 0.1},
     }
+    if tools:  # omit tools entirely to force a plain-text answer
+        payload["tools"] = [{"functionDeclarations": tools}]
     errors = []
     for model in dict.fromkeys([settings.gemini_model, settings.gemini_fallback_model]):
         try:

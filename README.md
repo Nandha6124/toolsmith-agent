@@ -8,7 +8,7 @@ An autonomous agent that solves multi-step tasks by choosing and calling tools i
 | Tool | What it does |
 |---|---|
 | `calculator` | Exact arithmetic via a safe AST evaluator (no `eval`) |
-| `web_search` | Searches Wikipedia for facts |
+| `web_search` | Searches Wikipedia and returns the intro of the top results |
 | `query_database` | Read-only SQL `SELECT` against a sample products / customers / orders database |
 
 ## The agent loop (`app/agent.py`)
