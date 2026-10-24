@@ -23,21 +23,13 @@ class LLMResponse:
     text: str = ""
 
 
-def call_model(contents: List[Dict[str, Any]], tools: List[Dict[str, Any]], system: str) -> LLMResponse:
-    """One model call with exponential-backoff retries on rate limits and server errors."""
-    if not settings.gemini_api_key:
-        raise LLMError("GEMINI_API_KEY is not set")
-    payload = {
-        "systemInstruction": {"parts": [{"text": system}]},
-        "contents": contents,
-        "tools": [{"functionDeclarations": tools}],
-        "generationConfig": {"temperature": 0.1},
-    }
+def _call_one(model: str, payload: dict, retries: int) -> LLMResponse:
+    """One model with exponential-backoff retries (1s, 2s, 4s...) on rate limits and server errors."""
     last = "unknown error"
-    for attempt in range(settings.max_llm_retries + 1):
+    for attempt in range(retries + 1):
         try:
             r = httpx.post(
-                URL.format(model=settings.gemini_model),
+                URL.format(model=model),
                 headers={"x-goog-api-key": settings.gemini_api_key},
                 json=payload,
                 timeout=60,
@@ -51,9 +43,30 @@ def call_model(contents: List[Dict[str, Any]], tools: List[Dict[str, Any]], syst
             last = str(exc)
         except httpx.HTTPStatusError as exc:
             raise LLMError(f"LLM request failed: {exc}") from exc
-        if attempt < settings.max_llm_retries:
-            time.sleep(2 ** attempt)  # 1s, 2s, 4s
-    raise LLMError(f"LLM unavailable after {settings.max_llm_retries + 1} attempts ({last})")
+        if attempt < retries:
+            time.sleep(2 ** attempt)
+    raise LLMError(f"{model} is busy ({last})")
+
+
+def call_model(contents: List[Dict[str, Any]], tools: List[Dict[str, Any]], system: str) -> LLMResponse:
+    """Try the main model, then the fallback model if the main one stays busy."""
+    if not settings.gemini_api_key:
+        raise LLMError("GEMINI_API_KEY is not set")
+    payload = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": contents,
+        "tools": [{"functionDeclarations": tools}],
+        "generationConfig": {"temperature": 0.1},
+    }
+    errors = []
+    for model in dict.fromkeys([settings.gemini_model, settings.gemini_fallback_model]):
+        try:
+            return _call_one(model, payload, min(settings.max_llm_retries, 2))
+        except LLMError as exc:
+            if "busy" not in str(exc):
+                raise
+            errors.append(str(exc))
+    raise LLMError("LLM unavailable: " + "; ".join(errors))
 
 
 def _parse(data: Dict[str, Any]) -> LLMResponse:
