@@ -4,6 +4,11 @@ An autonomous agent that solves multi-step tasks by choosing and calling tools i
 
 **Stack:** Python, FastAPI, Pydantic, Google Gemini function calling, SQLite, httpx, Docker
 
+## Example run
+One request, two tools: the agent queries the database, then uses the calculator. Every step, observation and the token cost are returned:
+
+![Toolsmith agent response showing tool steps and usage](docs/screenshot-agent.png)
+
 ## Tools
 | Tool | What it does |
 |---|---|
